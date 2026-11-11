@@ -1,0 +1,15 @@
+--- a/src/index.tsx
++++ b/src/index.tsx
+@@ -13,6 +13,7 @@
+   applyAppBackgroundImage,
+ } from "./utils/reader/launchUtil";
+ import { migrateConfig } from "./utils/common";
++import { initFileHandling } from "./utils/web/fileHandling";
+ initTheme();
+ initSystemFont();
+ migrateConfig();
+@@ -21,3 +22,4 @@
+ const container = document.getElementById("root")!;
+ createRoot(container).render(<Router />);
+ StyleUtil.applyTheme();
++initFileHandling();

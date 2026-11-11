@@ -1,0 +1,76 @@
+name: Build and deploy PWA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Weekly rebuild to track upstream dev: Mondays ~09:07 UTC (off-peak).
+    - cron: "7 9 * * 1"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+env:
+  PWA_BASE_PATH: /koodo-reader/
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout deployment repo (overlay + patches + scripts)
+        uses: actions/checkout@v4
+        with:
+          path: deploy
+
+      - name: Checkout upstream koodo-reader
+        uses: actions/checkout@v4
+        with:
+          repository: koodo-reader/koodo-reader
+          ref: dev
+          path: upstream
+          # shallow history is fine; patches are generated with full context
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: upstream/yarn.lock
+
+      - name: Install dependencies
+        working-directory: upstream
+        # --ignore-scripts: upstream postinstall rebuilds native electron deps
+        # (better-sqlite3, electron-builder install-app-deps) that the web
+        # build never uses; skip them to keep the job fast and green.
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Apply overlay, patches and build PWA
+        working-directory: upstream
+        run: node ../deploy/scripts/build.mjs --upstream .
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: upstream/build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

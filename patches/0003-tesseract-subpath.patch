@@ -1,0 +1,16 @@
+--- a/src/utils/reader/builtinOcrUtil.ts
++++ b/src/utils/reader/builtinOcrUtil.ts
+@@ -55,5 +55,12 @@
+       (async () => {
+         const workerScript = await (
+           await fetchWithTimeout(
+-            `${isElectronEnv ? "." : ""}/lib/tesseractjs/worker.min.js`,
++            // Web build serves under a subpath (e.g. /koodo-reader/); a
++            // leading "/" would 404. Resolve relative to the document so
++            // both root-hosted and subpath deploys work.
++            `${
++              isElectronEnv
++                ? "."
++                : new URL("lib/tesseractjs/worker.min.js", document.baseURI).href
++            }`,
+             INIT_TIMEOUT_MS
