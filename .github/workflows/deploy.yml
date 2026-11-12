@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
   pages: write
   id-token: write
 
@@ -53,13 +54,40 @@ jobs:
         run: yarn install --frozen-lockfile --ignore-scripts
 
       - name: Apply overlay, patches and build PWA
+        id: build
         working-directory: upstream
         run: node ../deploy/scripts/build.mjs --upstream .
 
+      # The build intentionally dies loudly when upstream `dev` drifts away
+      # from a patch/kookit anchor. For scheduled runs nobody is watching the
+      # log, so surface the drift as an issue instead (deduped by title).
+      - name: Open issue when a scheduled build fails
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="Weekly PWA build failed - upstream koodo-reader dev drift"
+          # Quoted phrase + in:title: an unquoted "$TITLE" would degrade to
+          # a title match on "Weekly" plus free-text terms matching bodies.
+          OPEN=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search 'in:title "Weekly PWA build failed"' --json number --jq 'length')
+          if [ "$OPEN" = "0" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body \
+          "The scheduled weekly build failed, most likely because upstream \`koodo-reader@dev\` changed a file that \`patches/\` or the kookit anchor replacements in \`scripts/build.mjs\` depend on. The live site still serves the last successful deployment.
+
+          Failed run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+
+          Regenerate the affected patch against current \`dev\` (or update the kookit replacement strings) and re-run the workflow."
+          else
+            echo "An open drift issue already exists; not creating a duplicate."
+          fi
+
       - name: Setup Pages
+        if: success()
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: success()
         uses: actions/upload-pages-artifact@v3
         with:
           path: upstream/build
